@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.env
+mlruns/
+backend/benchmark/results/run-*.json
+frontend/node_modules/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo

@@ -1,0 +1,258 @@
+# QueryPilot semantic layer - the single source of truth for business definitions.
+#
+# Every answer cites the metric name + version it used. Changing a definition means
+# bumping that metric's `version` and adding a changelog entry; the catalog_version
+# is part of the result-cache key so old answers are never served for new definitions.
+catalog_version: "2026.10.1"
+owner: finance-data@acme.example
+
+changelog:
+  - version: "2026.10.1"
+    date: "2026-10-01"
+    note: "return_rate now uses net revenue as denominator (was gross sales)."
+  - version: "2026.07.0"
+    date: "2026-07-01"
+    note: "Revenue excludes cancelled orders; pending orders are included."
+
+# Base fact grain: one row per order line. All metrics share these joins and filters.
+fact:
+  table: sales.order_items
+  alias: oi
+  base_filters:
+    - "o.status <> 'cancelled'"
+  time_column: o.order_date
+  joins:
+    o:  {table: sales.orders,    "on": "o.order_id = oi.order_id",          required: true}
+    r:  {table: sales.regions,   "on": "r.region_id = o.region_id"}
+    p:  {table: sales.products,  "on": "p.product_id = oi.product_id"}
+    c:  {table: sales.customers, "on": "c.customer_id = o.customer_id"}
+    rt: {table: sales.returns,   "on": "rt.order_item_id = oi.order_item_id", type: left}
+
+metrics:
+  revenue:
+    version: 3
+    label: Net revenue
+    description: Net sales after line discounts, excluding cancelled orders. Refunds are NOT deducted.
+    sql: "SUM(oi.quantity * oi.unit_price * (1 - oi.discount))"
+    format: currency
+    additive: true
+    synonyms: [revenue, revenues, net revenue, net sales, sales, turnover, top line, income from sales, takings]
+  gross_sales:
+    version: 1
+    label: Gross sales
+    description: Sales at invoiced unit price before discounts.
+    sql: "SUM(oi.quantity * oi.unit_price)"
+    format: currency
+    additive: true
+    synonyms: [gross sales, sales before discount, list sales, gross bookings]
+  discount_amount:
+    version: 1
+    label: Discount amount
+    description: Total value of line discounts given.
+    sql: "SUM(oi.quantity * oi.unit_price * oi.discount)"
+    format: currency
+    additive: true
+    synonyms: [discount amount, discounts given, total discounts, discount value, discounts]
+  discount_rate:
+    version: 1
+    label: Discount rate
+    description: Discount amount as a share of gross sales.
+    sql: "{discount_amount} / NULLIF({gross_sales}, 0)"
+    format: percent
+    additive: false
+    synonyms: [discount rate, discounting, discount percentage, discount %, average discount]
+  cogs:
+    version: 2
+    label: Cost of goods sold
+    description: Quantity times landed unit cost at time of sale.
+    sql: "SUM(oi.quantity * oi.unit_cost)"
+    format: currency
+    additive: true
+    synonyms: [cogs, cost of goods sold, cost of goods, cost of sales, product cost, costs]
+  gross_profit:
+    version: 2
+    label: Gross profit
+    description: Net revenue minus cost of goods sold.
+    sql: "{revenue} - {cogs}"
+    format: currency
+    additive: true
+    synonyms: [gross profit, profit, profits, gross profits, contribution]
+  gross_margin:
+    version: 2
+    label: Gross margin
+    description: Gross profit divided by net revenue.
+    sql: "({revenue} - {cogs}) / NULLIF({revenue}, 0)"
+    format: percent
+    additive: false
+    synonyms: [gross margin, gross margins, margin, margins, gm, gross margin percentage, gross margin %, profitability, margin %]
+  orders:
+    version: 1
+    label: Orders
+    description: Count of distinct non-cancelled orders.
+    sql: "COUNT(DISTINCT oi.order_id)"
+    format: number
+    additive: false   # distinct counts are not additive across overlapping groups
+    synonyms: [orders, order count, number of orders, order volume, how many orders, transactions]
+  units:
+    version: 1
+    label: Units sold
+    description: Total quantity sold.
+    sql: "SUM(oi.quantity)"
+    format: number
+    additive: true
+    synonyms: [units, units sold, quantity, quantity sold, volume sold, items sold, unit sales]
+  aov:
+    version: 1
+    label: Average order value
+    description: Net revenue per non-cancelled order.
+    sql: "{revenue} / NULLIF({orders}, 0)"
+    format: currency
+    additive: false
+    synonyms: [aov, average order value, avg order value, order value, basket size, average basket]
+  customers:
+    version: 1
+    label: Active customers
+    description: Distinct customers with at least one non-cancelled order in the period.
+    sql: "COUNT(DISTINCT o.customer_id)"
+    format: number
+    additive: false
+    synonyms: [customers, active customers, buyers, number of customers, customer count, purchasing customers]
+  refunds:
+    version: 1
+    label: Refunds
+    description: Refund amount on returned lines, attributed to the original order date.
+    sql: "COALESCE(SUM(rt.refund_amount), 0)"
+    format: currency
+    additive: true
+    requires: [rt]
+    synonyms: [refunds, refund amount, refunded, returns value, returned amount, refunds issued]
+  return_rate:
+    version: 2
+    label: Return rate
+    description: Refunds as a share of net revenue.
+    sql: "{refunds} / NULLIF({revenue}, 0)"
+    format: percent
+    additive: false
+    requires: [rt]
+    synonyms: [return rate, returns rate, refund rate, rate of returns]
+
+dimensions:
+  region:
+    label: Region
+    sql: r.region_name
+    requires: [r]
+    synonyms: [region, regions, territory, territories, geography, geo, area, areas]
+    values_from: "SELECT DISTINCT region_name FROM sales.regions"
+  country:
+    label: Country
+    sql: r.country
+    requires: [r]
+    synonyms: [country, countries, nation]
+    values_from: "SELECT DISTINCT country FROM sales.regions"
+  category:
+    label: Product category
+    sql: p.category
+    requires: [p]
+    synonyms: [category, categories, product category, product categories, product line, product lines, department, departments]
+    values_from: "SELECT DISTINCT category FROM sales.products"
+  product:
+    label: Product
+    sql: p.product_name
+    requires: [p]
+    synonyms: [product, products, sku, skus, item, items]
+    values_from: "SELECT DISTINCT product_name FROM sales.products"
+  channel:
+    label: Sales channel
+    sql: o.channel
+    requires: [o]
+    synonyms: [channel, channels, sales channel, sales channels]
+    values_from: "SELECT DISTINCT channel FROM sales.orders"
+  segment:
+    label: Customer segment
+    sql: c.segment
+    requires: [c]
+    synonyms: [segment, segments, customer segment, customer segments, customer type, customer types]
+    values_from: "SELECT DISTINCT segment FROM sales.customers"
+  customer:
+    label: Customer
+    sql: c.customer_name
+    requires: [c]
+    synonyms: [customer, customers, client, clients, account, accounts]
+    values_from: null   # high cardinality - not used for value matching
+  month:
+    label: Month
+    sql: "to_char(date_trunc('month', o.order_date), 'YYYY-MM')"
+    requires: [o]
+    time_grain: true
+    synonyms: [month, months, monthly, by month, per month, month over month, mom, trend, over time]
+  quarter:
+    label: Quarter
+    sql: "to_char(o.order_date, 'YYYY-\"Q\"Q')"
+    requires: [o]
+    time_grain: true
+    synonyms: [quarter, quarters, quarterly, by quarter, per quarter]
+  year:
+    label: Year
+    sql: "CAST(EXTRACT(YEAR FROM o.order_date) AS int)"
+    requires: [o]
+    time_grain: true
+    synonyms: [year, years, yearly, annual, annually, by year, per year]
+
+# Physical schema documentation used by retrieval and the raw-SQL route.
+tables:
+  sales.orders:
+    description: One row per customer order. status in (completed, pending, cancelled). Join to order_items for money.
+    columns:
+      order_id: Order identifier
+      customer_id: FK to sales.customers
+      region_id: FK to sales.regions
+      order_date: Date the order was placed
+      channel: Sales channel (Online, Retail, Partner)
+      status: completed | pending | cancelled
+  sales.order_items:
+    description: One row per order line with quantity, unit price, discount fraction and unit cost.
+    columns:
+      order_item_id: Line identifier
+      order_id: FK to sales.orders
+      product_id: FK to sales.products
+      region_id: Region of the order (denormalised)
+      quantity: Units on the line
+      unit_price: Invoiced price per unit before discount
+      discount: Discount as a fraction 0-1
+      unit_cost: Landed cost per unit
+  sales.products:
+    description: Product master with category, list price and standard cost.
+    columns:
+      product_id: Product identifier
+      product_name: Product name
+      category: Product category
+      list_price: Catalog list price
+      standard_cost: Standard cost
+  sales.customers:
+    description: Customer master. email and phone are PII and never queryable.
+    columns:
+      customer_id: Customer identifier
+      region_id: Home region
+      customer_name: Customer / company name
+      segment: Enterprise | SMB | Consumer
+      signup_date: Account creation date
+  sales.regions:
+    description: Sales regions with country.
+    columns:
+      region_id: Region identifier
+      region_name: Region name
+      country: Country of the regional HQ
+  sales.returns:
+    description: Returned order lines with refund amount; at most one return per line.
+    columns:
+      return_id: Return identifier
+      order_item_id: FK to sales.order_items
+      return_date: Date of the return
+      refund_amount: Amount refunded
+  sales.employees:
+    description: Sales staff headcount. Salary is restricted and never queryable.
+    columns:
+      employee_id: Employee identifier
+      region_id: Region
+      full_name: Name
+      title: Job title

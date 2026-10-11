@@ -1,0 +1,76 @@
+# Access policy: role -> what generated SQL may touch.
+# Enforced in three layers: (1) intent guard, (2) SQL validator, (3) Postgres grants + RLS.
+policy_version: "2026.10.0"
+
+# Columns no role may read through the copilot (also revoked at the database level).
+restricted_columns:
+  sales.customers: [email, phone]
+  sales.employees: [salary]
+
+# Words that signal a request for restricted data; used by the intent guard so the
+# user gets a clear policy message instead of a generic failure.
+restricted_terms:
+  email: "customer email addresses (PII)"
+  emails: "customer email addresses (PII)"
+  e-mail: "customer email addresses (PII)"
+  phone number: "customer phone numbers (PII)"
+  phone numbers: "customer phone numbers (PII)"
+  telephone: "customer phone numbers (PII)"
+  mobile number: "customer phone numbers (PII)"
+  contact details: "customer contact details (PII)"
+  salary: "employee salaries"
+  salaries: "employee salaries"
+  payroll: "employee salaries"
+  compensation: "employee salaries"
+  password: "credentials"
+  passwords: "credentials"
+  ssn: "government identifiers"
+  social security: "government identifiers"
+  credit card: "payment card data"
+
+allowed_functions_denylist:
+  - pg_sleep
+  - pg_read_file
+  - pg_read_binary_file
+  - pg_ls_dir
+  - pg_stat_file
+  - pg_terminate_backend
+  - pg_cancel_backend
+  - pg_reload_conf
+  - set_config
+  - current_setting
+  - dblink
+  - dblink_exec
+  - lo_import
+  - lo_export
+  - lo_get
+  - query_to_xml
+  - txid_current
+  - pg_advisory_lock
+  - pg_notify
+  - copy
+
+roles:
+  cfo:
+    description: Finance leadership - all regions of their tenant, no PII.
+    tables: [sales.orders, sales.order_items, sales.products, sales.customers, sales.regions, sales.returns, sales.employees]
+    region_scope: all
+    max_rows: 1000
+  regional_manager:
+    description: Sees only their assigned regions (RLS-enforced), no PII, no staff data.
+    tables: [sales.orders, sales.order_items, sales.products, sales.customers, sales.regions, sales.returns]
+    region_scope: assigned
+    max_rows: 1000
+  analyst:
+    description: All regions, sales tables only (no staff data), smaller row cap.
+    tables: [sales.orders, sales.order_items, sales.products, sales.customers, sales.regions, sales.returns]
+    region_scope: all
+    max_rows: 500
+
+# Demo identities (the UI lets you switch between them). In production, map your IdP
+# groups to these roles instead.
+demo_users:
+  maya:  {name: "Maya Chen",   title: "CFO",                 tenant_id: 1, tenant: "Acme Retail", role: cfo}
+  raj:   {name: "Raj Patel",   title: "Regional Manager, West", tenant_id: 1, tenant: "Acme Retail", role: regional_manager, regions: [West]}
+  ana:   {name: "Ana Silva",   title: "Business Analyst",    tenant_id: 1, tenant: "Acme Retail", role: analyst}
+  li:    {name: "Li Wei",      title: "CFO",                 tenant_id: 2, tenant: "Globex Corp", role: cfo}

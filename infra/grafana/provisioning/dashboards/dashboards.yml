@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: querypilot
+    folder: QueryPilot
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

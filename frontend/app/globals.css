@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: "Inter", "Segoe UI", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+
+html, body { height: 100%; }
+body { @apply bg-ink-950 text-fog-100 antialiased; font-feature-settings: "cv11", "ss01"; }
+
+.card { @apply rounded-xl border border-ink-700 bg-ink-900/90 shadow-card; }
+.card-h { @apply flex items-center justify-between gap-3 border-b border-ink-700/80 px-4 py-2.5 text-[13px]; }
+.chip { @apply inline-flex items-center gap-1 rounded-md border border-ink-600 bg-ink-800 px-2 py-0.5 text-[11px] text-fog-300; }
+.btn { @apply inline-flex items-center gap-1.5 rounded-lg border border-ink-600 bg-ink-800 px-3 py-1.5 text-[13px] text-fog-100 transition hover:border-violet-500/60 hover:bg-ink-700 disabled:opacity-40; }
+.btn-primary { @apply inline-flex items-center gap-1.5 rounded-lg bg-violet-500 px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-violet-600 disabled:opacity-40; }
+.scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: #28365c; border-radius: 8px; }
+.tabular { font-variant-numeric: tabular-nums; }
+pre.sql { @apply overflow-auto rounded-lg border border-ink-700 bg-ink-950 p-3 font-mono text-[12px] leading-relaxed text-fog-300; }
